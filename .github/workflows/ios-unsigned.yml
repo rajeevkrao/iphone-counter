@@ -1,0 +1,90 @@
+name: Build unsigned iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'App.tsx'
+      - 'app.json'
+      - 'index.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'assets/**'
+      - '.github/workflows/ios-unsigned.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Generate native iOS project
+        run: npx expo prebuild --platform ios --clean --no-install
+        env:
+          CI: '1'
+
+      - name: Install CocoaPods dependencies
+        working-directory: ios
+        run: pod install
+
+      - name: Build unsigned archive
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace ios/Counter.xcworkspace \
+            -scheme Counter \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Counter.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            archive | xcbeautify
+
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -R "$RUNNER_TEMP/Counter.xcarchive/Products/Applications/Counter.app" "$RUNNER_TEMP/Payload/"
+          cd "$RUNNER_TEMP"
+          zip -qry Counter-unsigned.ipa Payload
+          shasum -a 256 Counter-unsigned.ipa | tee Counter-unsigned.ipa.sha256
+
+      - name: Upload unsigned IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Counter-unsigned-ipa
+          path: |
+            ${{ runner.temp }}/Counter-unsigned.ipa
+            ${{ runner.temp }}/Counter-unsigned.ipa.sha256
+          if-no-files-found: error
+
+      - name: Publish unsigned IPA as a GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: build-${{ github.run_number }}-${{ github.run_attempt }}
+        run: |
+          gh release create "$TAG" \
+            "$RUNNER_TEMP/Counter-unsigned.ipa" \
+            "$RUNNER_TEMP/Counter-unsigned.ipa.sha256" \
+            --title "Counter unsigned IPA ($TAG)" \
+            --notes "Unsigned iOS build. Install with SideStore, which signs it with your own free Apple Account. Free-account builds expire after 7 days unless refreshed."
