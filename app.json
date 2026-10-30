@@ -9,11 +9,11 @@
     "backgroundColor": "#F2F2F7",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.example.iphonecounter",
+      "bundleIdentifier": "io.github.rajeevkrao.iphonecounter",
       "buildNumber": "1"
     },
     "android": {
-      "package": "com.example.iphonecounter",
+      "package": "io.github.rajeevkrao.iphonecounter",
       "adaptiveIcon": {
         "backgroundColor": "#0A84FF",
         "foregroundImage": "./assets/android-icon-foreground.png",
